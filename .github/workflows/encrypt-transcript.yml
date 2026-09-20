@@ -1,0 +1,75 @@
+name: Encrypt conversation transcript
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  encrypt:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create test transcript
+        run: |
+          cat > conversation.md <<'EOF'
+          # Conversation Memory Test
+
+          This is a temporary encryption test.
+          Plaintext must never be committed to the public repository.
+          EOF
+
+      - name: Encrypt transcript
+        env:
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$ENCRYPTION_KEY" ]; then
+            echo "ENCRYPTION_KEY secret is missing."
+            exit 1
+          fi
+
+          openssl enc \
+            -aes-256-cbc \
+            -salt \
+            -pbkdf2 \
+            -iter 600000 \
+            -md sha256 \
+            -in conversation.md \
+            -out conversation.md.enc \
+            -pass env:ENCRYPTION_KEY
+
+          echo "Encryption successful."
+
+      - name: Delete plaintext
+        run: |
+          rm -f conversation.md
+
+          if [ -e conversation.md ]; then
+            echo "Plaintext file still exists."
+            exit 1
+          fi
+
+          echo "Plaintext deleted."
+
+      - name: Commit encrypted file
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add conversation.md.enc
+
+          if git diff --cached --quiet; then
+            echo "No encrypted file changes."
+            exit 0
+          fi
+
+          git commit -m "chore: update encrypted conversation transcript"
+          git push
