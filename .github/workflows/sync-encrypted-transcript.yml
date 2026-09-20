@@ -1,0 +1,68 @@
+name: Sync encrypted conversation
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "conversation.md.enc"
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout public repository
+        uses: actions/checkout@v4
+
+      - name: Check encrypted transcript
+        run: |
+          set -euo pipefail
+
+          if [ ! -s "conversation.md.enc" ]; then
+            echo "conversation.md.enc is missing or empty."
+            exit 1
+          fi
+
+          echo "Encrypted transcript found."
+
+      - name: Clone private repository
+        env:
+          PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$PRIVATE_REPO_TOKEN" ]; then
+            echo "PRIVATE_REPO_TOKEN secret is missing."
+            exit 1
+          fi
+
+          git clone \
+            "https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/bottleofarts-dev/chatgpt-conversation-memory.git" \
+            private-repo
+
+      - name: Copy encrypted transcript
+        run: |
+          set -euo pipefail
+
+          cp conversation.md.enc private-repo/conversation.md.enc
+
+      - name: Commit and push
+        working-directory: private-repo
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add conversation.md.enc
+
+          if git diff --cached --quiet; then
+            echo "No changes to sync."
+            exit 0
+          fi
+
+          git commit -m "chore: sync encrypted conversation transcript"
+          git push origin main
